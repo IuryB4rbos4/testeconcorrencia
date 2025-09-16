@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:17.6
+    container_name: pg
+    environment:
+      POSTGRES_USER: pguser
+      POSTGRES_PASSWORD: pgpass
+      POSTGRES_DB: sbtest
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pguser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7.0.23
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongoadmin
+      MONGO_INITDB_ROOT_PASSWORD: mongopass
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    command: ["--bind_ip_all"]
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval 'db.runCommand({ping:1})' --quiet || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  etl:
+    build: ./etl
+    container_name: etl
+    depends_on:
+      - postgres
+      - mongo
+    volumes:
+      - ./kaggle.json:/root/.kaggle/kaggle.json:ro
+    entrypoint: /app/entrypoint.sh
+    tty: true
+    stdin_open: true
+
+  bench-sysbench:
+    build: ./bench-sysbench
+    container_name: bench-sysbench
+    depends_on:
+      - etl
+      - postgres
+    volumes:
+      - ./scripts:/opt/scripts
+    tty: true
+
+  bench-ycsb:
+    build: ./bench-ycsb
+    container_name: bench-ycsb
+    depends_on:
+      - etl
+      - mongo
+    volumes:
+      - ./scripts:/opt/scripts
+    tty: true
+
+volumes:
+  pgdata:
+  mongodata:
